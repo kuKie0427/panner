@@ -10,26 +10,52 @@
 | Field | Value |
 |---|---|
 | **Working directory** | `/Volumes/code/allAgent/forks/panner/` |
-| **Branch** | `feat/citation-checker` (P1.2 done; pending PR merge) |
-| **Active feature** | _(Session 4 closed)_ — 下次 session: push PR + merge + `phase1-p1.2` tag, then P1.3 |
+| **Branch** | `main` (P1.2 合并完毕; `feat/citation-checker` 已删) |
+| **Active feature** | _(Session 5 closed)_ — 下次 session boot: P1.3 (CodeAgent.final_answer pipeline integration) |
 | **Phase** | 1 — Citation Grounding + Refusal (主战场) |
-| **Mode** | P1.2 done on branch, awaiting PR/merge |
-| **Last updated** | 2026-07-13 (Session 4 close) |
+| **Mode** | P1.2 done + merged into main, tagged `phase1-p1.2` |
+| **Last updated** | 2026-07-13 (Session 5 close) |
 | **Total features** | 17 (P1: 7 — completed: 3 / pending: 4) |
-| **PR / tag** | pending PR for P1.2 + `phase1-p1.2` milestone tag |
+| **PR / tag** | PR #3 MERGED; `phase1-p1.2` tag pushed to origin |
 
 ### Completed (cumulative)
 - ✅ P1.0 — Harness artifacts 初始化 (Session 1)
-- ✅ P1.1 — ExecutionLog schema + SQLite 起步 (Session 2; branch `feat/citation-checker`)
+- ✅ P1.1 — ExecutionLog schema + SQLite 起步 (Session 2)
+- ✅ P1.2 — CitationChecker 落地 (Session 4-5; PR #3 merged)
 
 ### Pending (next session start here)
-- **P1.2** CitationChecker interface + token extraction
-- P1.3 CodeAgent.final_answer pipeline integration (depends on P1.2)
+- **P1.3** CodeAgent.final_answer pipeline integration (consumes CitationChecker + RefusalAnswer)
 - P1.4 citation_system_prompt.yaml (depends on P1.3)
 - P1.5 Sandbox enforcement hooks: D1 + DuckDB command layer (depends on P1.1)
 - P1.6 Phase 1 退出标准 verification (depends on P1.2-P1.5)
 
 ## Session Log
+
+### Session 5 — 2026-07-13 (P1.2 milestone close)
+
+#### Worked on
+1. `git push -u origin feat/citation-checker` (via SSH config workaround for MITM proxy blocking HTTPS git).
+2. `gh pr create --base main` — PR #3 created.
+3. `gh pr merge 3 --merge --delete-branch` — fast-forwarded main from `59c4812` to `fc9d58c`. Branch auto-deleted.
+4. `git remote prune origin` — stale `origin/feat/citation-checker` tracking ref cleaned.
+5. `git tag -a phase1-p1.2 f9efb75 -m "..."` — milestone tag at the P1.2 commit (not the merge commit — milestone represents the work, not the org artifact). Pushed to origin.
+6. Updated `progress.md` Snapshot + Completed list; Session 4 records the implementation, this Session 5 records the merge + tag.
+
+#### Final state after this session
+- `main`: `fc9d58c` (PR #3 merge commit)
+- Tags: `phase1-p1.1` (P1.1), `phase1-p1.2` (P1.2)
+- Branches: only `main` (local + remote tracking)
+- Working tree: only `DIRECTIONS.md` untracked (pre-existing, user decides)
+
+#### Next (planned for Session 6)
+1. P1.3 — CodeAgent.final_answer pipeline integration
+   - In `src/panner/agents.py`'s `CodeAgent.final_answer` flow, after LLM generates
+     final_answer and before framework surfaces to user:
+     - Run `CitationChecker.check(answer, exec_log)`
+     - If `result.passed` → return `answer`
+     - Else → return `RefusalAnswer(...).render()` + log attempt_id to failure log
+   - 1 retry rule (open issue #2) before final refusal (P1.3 enforces)
+2. On the same branch (or fresh `feat/citation-checker` if reused) — `feat/citation-checker-pipeline` would be cleaner naming, but reuse is fine.
 
 ### Session 4 — 2026-07-13 (P1.2 CitationChecker)
 
