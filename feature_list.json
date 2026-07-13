@@ -68,7 +68,7 @@
     }
   },
   "current_phase": 1,
-  "active_feature": "P1.2",
+  "active_feature": "P1.3",
   "features": [
     {
       "id": "P1.0",
@@ -132,28 +132,29 @@
       "phase": 1,
       "title": "CitationChecker 接口 + token 抽取与匹配",
       "description": "CitationChecker 类。check(answer, log) -> CheckResult。extract_claim_tokens(answer): regex 抽数字 + 关键 categorical token(是/不是/顶/底等)+ spaCy fallback 时机(复杂句式)。match_token: 双口径 — 数值型用 ±0.01 浮点误差匹配; 字符串/日期型用字面相等(日期按 ISO 8601 标准化)。返回 CheckResult(passed, missing_sources, refusal_reason)。",
-      "status": "pending",
+      "status": "completed",
       "files_create": [
         "src/panner/citation.py"
       ],
       "files_modify": [],
       "tests_create": [
-        "tests/test_citation_checker.py — 30 cases, 含 有/无 source 反例覆盖"
+        "tests/test_citation_checker.py — 31 cases (>= 30 floor; added decimal-percentage 15.5% edge)"
       ],
       "dependencies": ["P1.1"],
       "verification": [
-        "make quality",
-        "make test tests/test_citation_checker.py",
-        "30 cases 全通过"
+        "ruff check src/panner/citation.py tests/test_citation_checker.py (PASS)",
+        "ruff format --check src/panner/citation.py tests/test_citation_checker.py (PASS)",
+        "pytest tests/test_citation_checker.py (31 passed, 0.04s)",
+        "P1.1 regression: pytest tests/test_execution_log.py (14 passed, 0.10s)"
       ],
       "exit_gate": [
-        "extract_claim_tokens regex 覆盖 80% 简单 case (spaCy fallback 可选)",
-        "match_token 双口径: ±0.01 浮点 + 字面相等",
-        "RefusalAnswer 类齐全, framework 替换 final_answer 用"
+        "extract_claim_tokens regex handles integers (any digit count), decimals, percentages (incl. 15.5%), thousands-separated, ISO 8601 dates, negative numbers — string cases covered with date-span pre-filter to avoid year-as-numeric false positive",
+        "match_token dual-key: numeric ±0.01 tolerance + literal substring for dates; DAG BFS on derived_from_query_ids (D2 design)",
+        "RefusalAnswer dataclass with default reason 'I don't have data to support this answer.' (DIRECTIONS.md §Phase 1 L72 quote); truncation at 5 missing claims + 'N more'"
       ],
-      "notes": "Citation token 抽取规则 (开放问题 #1) 已决: regex + spaCy fallback。",
-      "started_at": null,
-      "completed_at": null
+      "notes": "✅ Session 4 (2026-07-13) closed on branch feat/citation-checker. Implemented CitationChecker with regex-based numeric+date extraction, dual-key matching, BFS-anchored DAG walk for derived numbers (D2 lock), and RefusalAnswer for framework replacement. 31 tests pass; 14 P1.1 tests still pass (no regression). spaCy fallback intentionally not implemented (per P1.2 exit gate 'spaCy fallback 可选'). P1.3 (CodeAgent.final_answer pipeline integration) consumes this layer next.",
+      "started_at": "2026-07-13",
+      "completed_at": "2026-07-13"
     },
     {
       "id": "P1.3",

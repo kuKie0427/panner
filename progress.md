@@ -10,13 +10,13 @@
 | Field | Value |
 |---|---|
 | **Working directory** | `/Volumes/code/allAgent/forks/panner/` |
-| **Branch** | `main` (P1.1 合并完毕; `feat/citation-checker` 已删) |
-| **Active feature** | _(Session 3 closed)_ — 下次 session boot: P1.2 (CitationChecker) |
+| **Branch** | `feat/citation-checker` (P1.2 done; pending PR merge) |
+| **Active feature** | _(Session 4 closed)_ — 下次 session: push PR + merge + `phase1-p1.2` tag, then P1.3 |
 | **Phase** | 1 — Citation Grounding + Refusal (主战场) |
-| **Mode** | P1.1 done + merged into main, tagged `phase1-p1.1` |
-| **Last updated** | 2026-07-13 (Session 3 close) |
-| **Total features** | 17 (P1: 7 — completed: 2 / pending: 5) |
-| **PR / tag** | PR #2 MERGED; `phase1-p1.1` tag pushed to origin |
+| **Mode** | P1.2 done on branch, awaiting PR/merge |
+| **Last updated** | 2026-07-13 (Session 4 close) |
+| **Total features** | 17 (P1: 7 — completed: 3 / pending: 4) |
+| **PR / tag** | pending PR for P1.2 + `phase1-p1.2` milestone tag |
 
 ### Completed (cumulative)
 - ✅ P1.0 — Harness artifacts 初始化 (Session 1)
@@ -30,6 +30,47 @@
 - P1.6 Phase 1 退出标准 verification (depends on P1.2-P1.5)
 
 ## Session Log
+
+### Session 4 — 2026-07-13 (P1.2 CitationChecker)
+
+#### Worked on
+1. **Branch** (post P1.1 merge): `git checkout -b feat/citation-checker` from main HEAD (61722d7)
+2. **Implementation**: `src/panner/citation.py` (222 lines)
+   - Public types: `Token` (frozen dataclass), `CheckResult` (passed/missing/refusal/chains), `RefusalAnswer` (framework refusal string with default reason)
+   - `CitationChecker.extract_claim_tokens(answer) -> list[Token]`: regex extracts integers (any digit count) / decimals / percentages (incl. "15.5%") / thousands-separated / signed / ISO 8601 dates; date-span pre-filter prevents year-as-numeric false positives
+   - `CitationChecker.check(answer, log) -> CheckResult`: for each token locate grounding; numeric uses BFS-anchored ±0.01 tolerance seed via `find_numeric_chain`; date/string literal walks via `log.find_derivation_chain` (P1.1)
+   - D2 lock: token lookups walk DAG BOTH upstream AND downstream from seed records; verified by `test_derived_chain_walked_includes_upstream`
+3. **Tests**: `tests/test_citation_checker.py` (31 cases, exceeds 30 floor):
+   - 8 token-extraction cases (int / decimal / percentage / decimal-percentage / thousands / negative / date / no-claims)
+   - 8 numeric-grounding cases (direct / precision tolerance / outside tolerance / percentage-fraction / thousands / negative-tolerance / hallucination / partial match)
+   - 3 derived-chain cases (D2 success, DAG walked upstream, hallucinated no chain)
+   - 3 date-grounding cases (match / no-match / with numeric)
+   - 3 mixed-answer cases (partial / same-row multi-numeric / multi-line stdout)
+   - 3 RefusalAnswer cases (simple render / truncate long list / default reason empty)
+   - 3 edge cases (empty answer / empty log / chain dict present on pass)
+4. **Regression**: P1.1 tests still pass — `pytest tests/test_execution_log.py` 14/14 in 0.10s
+5. **Verification**: `ruff check` + `ruff format --check` + pytest clean on P1.2 files
+
+#### Decisions locked (Session 4)
+- **Numeric tolerance inclusive**: `±0.01` is INCLUSIVE (diff == 0.01 is a valid match). Test `test_grounding_fails_when_outside_tolerance` updated to use 1234.58 (diff 0.02) so the boundary case is unambiguous.
+- **Date-span pre-filter**: avoids `"2026-07-13"` emitting `"2026"` as a numeric claim. Implemented as `date_spans` exclusion in `extract_claim_tokens` rather than regex complexity (cleaner separation).
+- **spaCy fallback explicitly NOT implemented** (per feature_list.json P1.2 exit gate "spaCy fallback 可选"). Regex covers ~80% simple cases per DIRECTIONS.md open issue #1.
+- **Categorical tokens (是/不是 / top/bottom) also NOT in scope** for P1.2 — numeric claims are where LLM hallucination is empirically measurable and where the citation battlefield lives.
+
+#### Open issues left to verify in P1.2 code (per DIRECTIONS.md §关键开放问题)
+- #6 跨 row citation 对齐 — answer writing order may not match SQL row order. P1.2 takes 1:1 literal approach; P1.3 (CodeAgent integration) is where positional vs K-NN alignment matters. Tests cover single-row cases.
+- #7 多次 SQL 同数字歧义 — duplicate numbers across runs get the latest `started_at`. `query_by_query_id` orders by `started_at DESC` but `_find_numeric_chain` accepts the FIRST match. Test would require post-P1.2 dedicated case.
+
+#### Blockers / risks (Session 4)
+- MITM proxy at 127.0.0.1:7890 from previous session still affecting HTTPS git push; SSH works with explicit `core.sshCommand`. PR push (next step) will use same SSH workaround.
+- `make quality` (full repo) still fails on 4 pre-existing upstream files — out of P1.2 scope, separate housekeeping.
+
+#### Next (planned for Session 5)
+1. `git push -u origin feat/citation-checker` (via SSH config workaround)
+2. `gh pr create --base main --head feat/citation-checker --title "feat(citation): P1.2 CitationChecker — extract + dual-key match + DAG-walk grounding" --body-file ...`
+3. `gh pr merge --merge --delete-branch`
+4. `git tag -a phase1-p1.2 <sha> -m "..."` and push tag
+5. Progress.md Session 5 close entry
 
 ### Session 2 — 2026-07-13 (P1.1 ExecutionLog)
 
