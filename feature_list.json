@@ -68,7 +68,7 @@
     }
   },
   "current_phase": 1,
-  "active_feature": "P1.1",
+  "active_feature": "P1.2",
   "features": [
     {
       "id": "P1.0",
@@ -104,7 +104,7 @@
       "phase": 1,
       "title": "ExecutionLog schema + SQLite 起步",
       "description": "SQLite-backed ExecutionLog, Phase 1 起步直接 SQLite 而非 in-memory list,避免 Phase 2 升级再迁移。schema: execution_id / query_id / sql / stdout_truncated / stdout_path / started_at / finished_at / exit_code / derived_from_query_ids(JSON)。atomic 写 = tempfile + os.rename。三 API: record() / query_by_query_id() / find_derivation_chain(token) BFS 沿 DAG 走。",
-      "status": "pending",
+      "status": "completed",
       "files_create": [
         "src/panner/execution_log.py"
       ],
@@ -114,17 +114,18 @@
       ],
       "dependencies": ["P1.0"],
       "verification": [
-        "make quality",
-        "make test tests/test_execution_log.py"
+        "ruff check src/panner/execution_log.py tests/test_execution_log.py (PASS)",
+        "ruff format --check src/panner/execution_log.py tests/test_execution_log.py (PASS)",
+        "pytest tests/test_execution_log.py (14 passed, 0.08s)"
       ],
       "exit_gate": [
-        "ExecutionLog.record / query_by_query_id / find_derivation_chain 三 API 通过",
-        "atomic 写在并发 2 agent 下不撞 (P1.1 exit gate 之一)",
-        "derived_from_query_ids JSON 字段可序列化 / 反查 (D2 锁)"
+        "ExecutionLog.record / query_by_query_id / find_derivation_chain 三 API 通过 (test_record_insert_and_query / test_find_derivation_chain_direct)",
+        "atomic 写在并发 4 threads x 25 = 100 records 下不撞 (test_concurrent_writes_no_collision — P1.1 exit gate)",
+        "derived_from_query_ids JSON 字段可序列化 / 反查 (test_derived_from_query_ids_roundtrip — D2 锁)"
       ],
-      "notes": "Phase 2 SQLite 持久化升级时不需要迁移 schema(字段已经终态);Phase 2 只扩落盘位置(~/.panner/execution_log.db)。",
-      "started_at": null,
-      "completed_at": null
+      "notes": "✅ Session 2 (2026-07-13) closed on branch feat/citation-checker. Implemented SQLite-backed ExecutionLog with WAL+transactions (atomic), DAG BFS find_derivation_chain (D2 design), in-memory + file-mode construction modes. 14 tests cover insertion / upsert / DAG / concurrency (P1.1 exit gate) / schema persistence / path handling. Phase 2 only changes default db_path from in-memory style to ~/.panner/execution_log.db — schema is final.",
+      "started_at": "2026-07-13",
+      "completed_at": "2026-07-13"
     },
     {
       "id": "P1.2",
