@@ -10,12 +10,13 @@
 | Field | Value |
 |---|---|
 | **Working directory** | `/Volumes/code/allAgent/forks/panner/` |
-| **Branch** | `feat/citation-checker` |
-| **Active feature** | _(Session 2 closed)_ — 下次 session boot: P1.2 (CitationChecker) |
+| **Branch** | `main` (P1.1 合并完毕; `feat/citation-checker` 已删) |
+| **Active feature** | _(Session 3 closed)_ — 下次 session boot: P1.2 (CitationChecker) |
 | **Phase** | 1 — Citation Grounding + Refusal (主战场) |
-| **Mode** | P1.1 done → next: P1.2 (CitationChecker) |
-| **Last updated** | 2026-07-13 (Session 2 close) |
+| **Mode** | P1.1 done + merged into main, tagged `phase1-p1.1` |
+| **Last updated** | 2026-07-13 (Session 3 close) |
 | **Total features** | 17 (P1: 7 — completed: 2 / pending: 5) |
+| **PR / tag** | PR #2 MERGED; `phase1-p1.1` tag pushed to origin |
 
 ### Completed (cumulative)
 - ✅ P1.0 — Harness artifacts 初始化 (Session 1)
