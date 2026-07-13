@@ -10,24 +10,93 @@
 | Field | Value |
 |---|---|
 | **Working directory** | `/Volumes/code/allAgent/forks/panner/` |
-| **Active feature** | _(Session 1 closed)_ — 下次 session boot: P1.1 (ExecutionLog schema + SQLite) |
+| **Branch** | `feat/citation-checker` |
+| **Active feature** | _(Session 2 closed)_ — 下次 session boot: P1.2 (CitationChecker) |
 | **Phase** | 1 — Citation Grounding + Refusal (主战场) |
-| **Mode** | bootstrap done → next: code (P1.1) |
-| **Last updated** | 2026-07-13 (Session 1 close) |
-| **Total features** | 17 (P1: 7 / P2: 3 / P3: 2 / P4: 5) |
+| **Mode** | P1.1 done → next: P1.2 (CitationChecker) |
+| **Last updated** | 2026-07-13 (Session 2 close) |
+| **Total features** | 17 (P1: 7 — completed: 2 / pending: 5) |
 
-### Completed (Session 1)
-- ✅ P1.0 — Harness artifacts 初始化 (AGENTS.md / feature_list.json / progress.md)
+### Completed (cumulative)
+- ✅ P1.0 — Harness artifacts 初始化 (Session 1)
+- ✅ P1.1 — ExecutionLog schema + SQLite 起步 (Session 2; branch `feat/citation-checker`)
 
 ### Pending (next session start here)
-- P1.1 ExecutionLog schema + SQLite
-- P1.2 CitationChecker interface + token extraction
-- P1.3 CodeAgent.final_answer pipeline integration
-- P1.4 citation_system_prompt.yaml
-- P1.5 Sandbox enforcement hooks (D1 + DuckDB command layer)
-- P1.6 Phase 1 退出标准 verification
+- **P1.2** CitationChecker interface + token extraction
+- P1.3 CodeAgent.final_answer pipeline integration (depends on P1.2)
+- P1.4 citation_system_prompt.yaml (depends on P1.3)
+- P1.5 Sandbox enforcement hooks: D1 + DuckDB command layer (depends on P1.1)
+- P1.6 Phase 1 退出标准 verification (depends on P1.2-P1.5)
 
 ## Session Log
+
+### Session 2 — 2026-07-13 (P1.1 ExecutionLog)
+
+#### Worked on
+1. **Environment bootstrap** (per AGENTS.md §Verification Commands + pyproject.toml `requires-python = ">=3.10"`):
+   - System Python 3.9.6 didn't satisfy `>=3.10`; created `.venv` via `uv venv --python 3.10`
+   - Installed minimal deps via `uv pip install`: `panner` (editable, no extras), `pytest`, `pytest-datadir`, `pytest-timeout`, `ruff`
+   - Skipped `panner[all]` (heavy extras — modal, mlx, etc.) to keep P1.1 verification lean
+2. **Branch**: `git checkout -b feat/citation-checker` (per DIRECTIONS.md §第一刀)
+3. **Implementation**:
+   - `src/panner/execution_log.py` (267 lines): `ExecutionRecord` dataclass + `ExecutionLog` SQLite class
+     - 3 construction modes: default (`~/.panner/execution_log.db`) / file path / `:memory:`
+     - 3 primary APIs: `record(...)`, `query_by_query_id(...)`, `find_derivation_chain(...)` with BFS over `derived_from_query_ids` DAG (D2 design — symmetric upstream + downstream walk)
+     - Atomic write via SQLite WAL mode + explicit `BEGIN IMMEDIATE` transactions (per P1.1 spec)
+     - `tempfile + os.rename` deferred to P2.2 (parquet files) per DIRECTIONS.md §Phase 2 split
+4. **Tests** (`tests/test_execution_log.py`, 14 cases, all passing in 0.08s):
+   - Insertion + upsert idempotency
+   - JSON roundtrip for `derived_from_query_ids` (D2 lock)
+   - Direct + transitive + no-match + empty-log derivation chain
+   - Ordering (newest first)
+   - **`test_concurrent_writes_no_collision` — P1.1 exit gate**: 4 threads × 25 records = 100 records, all persisted, no SQLite BusyError under WAL
+   - Schema persistence across reopen
+   - In-memory mode creates no files
+   - Explicit path creates parent dir
+   - `ExecutionRecord` dataclass isolation
+5. **Verification**:
+   - `ruff check src/panner/execution_log.py tests/test_execution_log.py` — clean
+   - `ruff format --check src/panner/execution_log.py tests/test_execution_log.py` — clean (auto-formatted once)
+   - `pytest tests/test_execution_log.py -q` — 14 passed in 0.08s
+
+#### Decisions locked (Session 2)
+- **Atomic write mechanism**: SQLite WAL + `BEGIN IMMEDIATE` transactions, not `tempfile + os.rename`. The latter applies only to P2.2 parquet files (per DIRECTIONS.md §Phase 2). Schema row-level atomicity is delegated to SQLite.
+- **DAG walk direction (D2)**: BOTH upstream (who derives from this record) AND downstream (who does this record derive from). Symmetric walk for robustness.
+- **`derived_from_query_ids` field**: JSON array of `query_id` strings. CitationChecker (P1.2) interprets empty chain as "no source — refuse".
+- **In-memory mode for tests**: `:memory:` SQLite is **per-connection**, so concurrency tests use `tmp_path` file-mode SQLite instead of in-memory.
+
+#### Hook cost during Session 2
+- 6+ AGENTS.md comment-detector hook triggers during code authoring (excessive linting cost). Addressed by:
+  - Module docstring: kept (Phase 1 architectural decision rationale)
+  - Class docstrings: kept (public API contract)
+  - Single-line method docstrings: trimmed
+  - `find_derivation_chain` docstring: kept (D2 algorithm + CitationChecker contract)
+  - `_row_to_record` schema-column-order comment: REMOVED (runtime errors catch this if mismatched)
+  - BEGIN IMMEDIATE comment: kept (SQLite knowledge)
+  - test docstring for `test_concurrent_writes_no_collision`: kept (marks P1.1 exit gate explicitly)
+  - All other comments: omitted (function names self-explanatory)
+
+#### Blockers (Session 2)
+- `make quality` (full repo) fails on pre-existing files (agent_types.py, gradio_ui.py, remote_executors.py, test_telemetry.py) — pre-existing formatting drift, **not in P1.1 scope, left for separate cleanup PR**. P1.1 verification uses scoped `ruff check`/`ruff format --check` on its own files only.
+
+#### Risks tracked (cumulative)
+| Risk | Severity | Mitigation |
+|---|---|---|
+| 系统 Python 3.9 不满足 >=3.10 | ~~Low~~ → **Resolved** | `.venv` 用 uv 管理,Python 3.10.19 |
+| execution_log schema 与 Phase 2 兼容性 | Low | P1.1 起步已 SQLite + WAL,Phase 2 升级只换默认 db_path 落盘位置 |
+| P1.1 reviewability 需要 ruff + pytest 双轨 | Low | 已锁 ruff check + ruff format --check + pytest 三件 |
+| `make quality` 全仓 pass 需顺带修 4 个 pre-existing 文件 | Low | 与 P1.1 独立,留 housekeeping commit |
+| pandas / DuckDB sandbox hooks (P1.5) 仍是 spec not code | Med | P1.2 写 CitationChecker 后,P1.5 起手 |
+| 真 LLM citation_attachment_rate 验证 (Phase 4) | Low | D3 双轨制已经定 nightly 出图 |
+
+#### Next (planned for Session 3)
+1. P1.2 — CitationChecker
+   - `extract_claim_tokens(answer)` — regex 数字 + 关键 categorical + spaCy fallback 准备
+   - `match_token` 双口径: ±0.01 浮点 + 字面相等 + 日期 ISO 8601 标准化
+   - `check(answer, execution_log)` → `CheckResult(passed, missing_sources, refusal_reason)`
+   - `RefusalAnswer` dataclass
+   - 30 cases 测试 (有/无 source 反例覆盖)
+2. 继续在 `feat/citation-checker` 分支
 
 ### Session 1 — 2026-07-13 (Harness bootstrap)
 
@@ -93,12 +162,11 @@ _尚无跨 session 累计条目(Session 1 是首条)。_
 
 ## Next Steps (Phase 1 remaining, atomic)
 
-1. **P1.1** — ExecutionLog schema + SQLite (pending)
-2. **P1.2** — CitationChecker interface + token extraction (pending)
-3. **P1.3** — CodeAgent.final_answer pipeline integration (pending)
-4. **P1.4** — citation_system_prompt.yaml (pending)
-5. **P1.5** — Sandbox enforcement: pandas API + DuckDB command layer (pending)
-6. **P1.6** — Phase 1 退出标准 verification (depends on P1.2-P1.5)
+1. **P1.2** — CitationChecker interface + token extraction (next)
+2. **P1.3** — CodeAgent.final_answer pipeline integration (depends on P1.2)
+3. **P1.4** — citation_system_prompt.yaml (depends on P1.3)
+4. **P1.5** — Sandbox enforcement: pandas API + DuckDB command layer (depends on P1.1)
+5. **P1.6** — Phase 1 退出标准 verification (depends on P1.2-P1.5)
 
 完整 feature state 见 `feature_list.json`;Phase 1 退出门槛见 `feature_list.json.phase_exit_gates.1`。
 
