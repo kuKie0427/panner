@@ -1,0 +1,507 @@
+{
+  "$schema_version": "1.0",
+  "project": "panner",
+  "fork_origin": {
+    "name": "huggingface/smolagents",
+    "license": "Apache-2.0",
+    "stars_at_fork": 28300,
+    "bibtex_year": 2025,
+    "key_caveat_quoted": "The built-in LocalPythonExecutor is not a security sandbox. It applies some restrictions but can be bypassed and must not be used as a security boundary."
+  },
+  "scope_lock": {
+    "persona": "data analyst / analytics engineer who reads Python (single persona)",
+    "warehouse": "DuckDB embedded (single, :memory: or session-own db only)",
+    "main_battlefield": "framework-grounded citation — every numeric token in final_answer must trace to execution_log.sql_executions.DAG",
+    "ownership": "personal fork, single maintainer"
+  },
+  "generated_at": "2026-07-13",
+  "locked_decisions": {
+    "D1": "pandas API usage table is REAL framework boundary (LocalPythonExecutor hook __import__/getattr rejects merge/groupby.agg/pivot/apply/values/query/eval at AST parse + pre-run time), not prompt soft constraint",
+    "D2": "Derived numbers detected via DAG reverse lookup in execution_log.sql_executions.derived_from_query_ids JSON field; BFS walks the derivation chain",
+    "D3": "Mock LLM (PR quick regression, <5 min) vs real LLM (nightly cron, ~1h) are two-track; metrics not mixed; curve_diff.py tracks long-term invariant vs regression"
+  },
+  "scope_boundary_in_scope": [
+    "Data analyst 单一 persona",
+    "DuckDB 嵌入式 (single)",
+    "framework citation enforcement",
+    "sandbox hooks (pandas API + DuckDB INSTALL/ATTACH)",
+    "mock LLM PR regression",
+    "real LLM nightly validation"
+  ],
+  "scope_boundary_oos": [
+    "multi-agent",
+    "multi-warehouse (PG/BigQuery/Snowflake)",
+    "visualization / plot",
+    "PII redaction / 合规治理",
+    "cross-session alias / 长期记忆",
+    "real-time stream processing",
+    "xlsx 输入",
+    "LLM-as-judge / LLM 自我审查 当唯一 grounding"
+  ],
+  "phase_exit_gates": {
+    "1": {
+      "title": "Citation Grounding + Refusal (主战场)",
+      "citation_attachment_rate_min": 0.99,
+      "refusal_rate_min_out_of_scope": 0.95,
+      "adversarial_block_rate_min": 1.0,
+      "concurrent_writes_no_collision": true,
+      "description": "三件对比率 + SQLite execution_log atomic 写 / 2 agent 并发不撞。"
+    },
+    "2": {
+      "title": "SQL Execution Log + Result Storage (支撑)",
+      "max_row_no_context_overflow": 50000000,
+      "sample_preview_preserves_schema": true,
+      "atomic_write_under_concurrent_load": true
+    },
+    "3": {
+      "title": "DuckDB Schema Memory (支撑)",
+      "schema_pulls_per_10_turns_max": 1,
+      "drift_detection_required": true
+    },
+    "4": {
+      "title": "Eval suite (回归)",
+      "numeric_accuracy_no_regression": true,
+      "refusal_rate_no_regression": true,
+      "citation_attachment_rate_no_regression": true,
+      "mock_real_curve_diff_tracked": true,
+      "lazy_refusal_alert": "any metric drops while refusal_rate rises = regression alert"
+    }
+  },
+  "current_phase": 1,
+  "active_feature": "P1.1",
+  "features": [
+    {
+      "id": "P1.0",
+      "phase": 1,
+      "title": "Harness artifacts 初始化 (AGENTS.md / feature_list.json / progress.md)",
+      "description": "采用 harness-engineering pattern: AGENTS.md 承载 contributor + 工作流规则; feature_list.json 是 feature state source of truth; progress.md 是 session continuity log。本步骤把仓库从「刚 fork 完的代码包」转成「可走 Sisyphus/harness 流程的工作环境」。",
+      "status": "completed",
+      "files_create": [
+        "AGENTS.md (overwrites prior 4-line)",
+        "feature_list.json",
+        "progress.md"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": [],
+      "verification": [
+        "python -c \"import json; print(len(json.load(open('feature_list.json'))['features']))\" returns 17",
+        "All three files exist at allAgent/forks/panner/",
+        "AGENTS.md no remaining {{...}} placeholders",
+        "AGENTS.md preserves 4-line panner coding conventions (OOP/Pythonic/单测/mock-first)"
+      ],
+      "exit_gate": [
+        "feature_list.json valid JSON with 17 features across 4 phases (P1:7 / P2:3 / P3:2 / P4:5)",
+        "progress.md has Session 1 entry",
+        "AGENTS.md preserves coding conventions + scope boundaries"
+      ],
+      "notes": "✅ Session 1 (2026-07-13) closed. AGENTS.md = 95 行 harness template 套入 + 4 占位符填; feature_list.json = 17 features (P1:7 / P2:3 / P3:2 / P4:5); progress.md = Session 1 entry 完整. 下次 session boot 直接进 P1.1.",
+      "started_at": "2026-07-13",
+      "completed_at": "2026-07-13"
+    },
+    {
+      "id": "P1.1",
+      "phase": 1,
+      "title": "ExecutionLog schema + SQLite 起步",
+      "description": "SQLite-backed ExecutionLog, Phase 1 起步直接 SQLite 而非 in-memory list,避免 Phase 2 升级再迁移。schema: execution_id / query_id / sql / stdout_truncated / stdout_path / started_at / finished_at / exit_code / derived_from_query_ids(JSON)。atomic 写 = tempfile + os.rename。三 API: record() / query_by_query_id() / find_derivation_chain(token) BFS 沿 DAG 走。",
+      "status": "pending",
+      "files_create": [
+        "src/panner/execution_log.py"
+      ],
+      "files_modify": [],
+      "tests_create": [
+        "tests/test_execution_log.py (atomic 写 / 并发写 / DAG 派生反查)"
+      ],
+      "dependencies": ["P1.0"],
+      "verification": [
+        "make quality",
+        "make test tests/test_execution_log.py"
+      ],
+      "exit_gate": [
+        "ExecutionLog.record / query_by_query_id / find_derivation_chain 三 API 通过",
+        "atomic 写在并发 2 agent 下不撞 (P1.1 exit gate 之一)",
+        "derived_from_query_ids JSON 字段可序列化 / 反查 (D2 锁)"
+      ],
+      "notes": "Phase 2 SQLite 持久化升级时不需要迁移 schema(字段已经终态);Phase 2 只扩落盘位置(~/.panner/execution_log.db)。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P1.2",
+      "phase": 1,
+      "title": "CitationChecker 接口 + token 抽取与匹配",
+      "description": "CitationChecker 类。check(answer, log) -> CheckResult。extract_claim_tokens(answer): regex 抽数字 + 关键 categorical token(是/不是/顶/底等)+ spaCy fallback 时机(复杂句式)。match_token: 双口径 — 数值型用 ±0.01 浮点误差匹配; 字符串/日期型用字面相等(日期按 ISO 8601 标准化)。返回 CheckResult(passed, missing_sources, refusal_reason)。",
+      "status": "pending",
+      "files_create": [
+        "src/panner/citation.py"
+      ],
+      "files_modify": [],
+      "tests_create": [
+        "tests/test_citation_checker.py — 30 cases, 含 有/无 source 反例覆盖"
+      ],
+      "dependencies": ["P1.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_citation_checker.py",
+        "30 cases 全通过"
+      ],
+      "exit_gate": [
+        "extract_claim_tokens regex 覆盖 80% 简单 case (spaCy fallback 可选)",
+        "match_token 双口径: ±0.01 浮点 + 字面相等",
+        "RefusalAnswer 类齐全, framework 替换 final_answer 用"
+      ],
+      "notes": "Citation token 抽取规则 (开放问题 #1) 已决: regex + spaCy fallback。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P1.3",
+      "phase": 1,
+      "title": "CodeAgent.final_answer 流程集成 CitationChecker",
+      "description": "修改 src/panner/agents.py 的 CodeAgent.final_answer 流程 — 在 LLM 生成 final_answer 之后、framework 不可信之前插入 CitationChecker;通过 → 照常返回;未通过 → 替换为 RefusalAnswer + 记 attempt_id 到 failure log。",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "src/panner/agents.py"
+      ],
+      "tests_create": [
+        "tests/test_citation_workflow_e2e.py — 完整 mock LLM 端到端 (NL→SQL→final_answer→CitationChecker)"
+      ],
+      "dependencies": ["P1.2"],
+      "verification": [
+        "make quality",
+        "make test tests/test_citation_workflow_e2e.py",
+        "mock LLM 跑通三件 (有 source 通过 / 无 source 拒答 / 派生数字走 DAG)"
+      ],
+      "exit_gate": [
+        "CodeAgent.final_answer 流程稳定, CitationChecker 插入点无副作用",
+        "RefusalAnswer 替代成功, attempt_id 写入 failure log"
+      ],
+      "notes": "Phase 1 开放问题 #2 已决: framework 拒答后 1 次 retry, 不无限重试。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P1.4",
+      "phase": 1,
+      "title": "Citation 系统 prompt 软约束 YAML",
+      "description": "src/panner/prompts/citation_system_prompt.yaml — YAML 格式, 系统注入 prompt 强约束「答案中每个数字必须有 source_query_id XML tag 标注来源」。这是 D1 的软约束层, 真正拦截在 framework 层 (P1.5 sandbox hook), 不依赖 LLM 自觉。",
+      "status": "pending",
+      "files_create": [
+        "src/panner/prompts/citation_system_prompt.yaml"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P1.3"],
+      "verification": [
+        "make quality",
+        "yaml schema 校验 (pyyaml.load 不报错)"
+      ],
+      "exit_gate": [
+        "YAML 加载到 prompt 字符串成功, 与原 smolagents prompts/ 目录格式兼容",
+        "软约束层就绪, 真边界 (P1.5) 是 framework hard constraint"
+      ],
+      "notes": "pyproject.toml [tool.setuptools.package-data] 已配 'panner.prompts' = ['*.yaml'], 无需改 setup。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P1.5",
+      "phase": 1,
+      "title": "Sandbox enforcement hooks (pandas API + DuckDB command layer)",
+      "description": "修改 src/panner/local_python_executor.py, AST parse 后 + 运行前 hook __import__ + getattr。强制:\n1. pandas.DataFrame.merge / groupby.agg / pivot / apply / values / query / eval 运行前拒\n2. pandas.read_* 只允许 read_csv (granting csv_source grounding) + read_sql + read_sql_query (走 DuckDB 入 execution_log)\n3. numpy 仅纯数组算术允许 (numpy.add/mean/std 等); 拒绝 numpy.loadtxt/fromfile/genfromtxt/load 等文件读路径\n4. duckdb 仅 execute/sql/from_df 等标准 connection 方法允许; 拒绝 duckdb.sql 参数以 INSTALL/LOAD/ATTACH ... AS ... 开头(且非 :memory:/own db)",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "src/panner/local_python_executor.py"
+      ],
+      "tests_create": [
+        "tests/test_sandbox_pandas_bypass.py — 50+ 逃逸路径 mock LLM 写出「应该走的」代码, framework 必须拒",
+        "tests/test_derived_citation.py — 30+ 派生数字 (difference/ratio/percentage/YoY/QoQ), 凭空数字必拒"
+      ],
+      "dependencies": ["P1.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_sandbox_pandas_bypass.py tests/test_derived_citation.py"
+      ],
+      "exit_gate": [
+        "7 条具体 pandas 逃逸路径 (merge/groupby.agg/pivot/query/apply/df.values/pandas.eval/numpy 文件路径) 全部 framework 拦截",
+        "DuckDB INSTALL/ATTACH denial 落 execution_log.deny_reason='sandbox_violation'",
+        "P1.5 是 P1.2/CitationChecker 的真边界辅助 (D1 锁)"
+      ],
+      "notes": "D1 已锁真边界; P1.4 prompt 是软约束, P1.5 hook 是硬约束。设计原则 3 已锁 — prompt 是软 + sandbox hook 是硬。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P1.6",
+      "phase": 1,
+      "title": "Phase 1 退出标准验证 (smoke + rate gate)",
+      "description": "跑 P1.2 + P1.3 + P1.5 三类 case 集, 验 phase_exit_gates.1 三件对比率: citation_attachment_rate >= 99% / refusal_rate >= 95% OOS / 「3 编数字」对抗 case 100% 拦。",
+      "status": "pending",
+      "files_create": [
+        "tests/eval/phase1_smoke.py — 跑既有 test 集出三件 metric"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P1.2", "P1.3", "P1.4", "P1.5"],
+      "verification": [
+        "python tests/eval/phase1_smoke.py",
+        "三件 metric 全过 gate"
+      ],
+      "exit_gate": [
+        "phase_1_exit_gate 全过",
+        "DIRECTIONS.md Phase 1 章节标记 - [x] 实施完成",
+        "Phase 2 入口开 (P2.1 引入 execution_log 持久化)"
+      ],
+      "notes": "Phase 1 退出 = 6 个 feature 全 completed。Phase 2/3/4 是支撑 + 回归层, 不阻塞 Phase 1 主战场叙事。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P2.1",
+      "phase": 2,
+      "title": "ExecutionLog SQLite filesystem persistence + atomic write",
+      "description": "Phase 1 起步直接 SQLite, 本步把后端延伸到 filesystem-based ~/.panner/execution_log.db; atomic 写 tempfile + os.rename 防并发撞, P1.1 schema 兼容升级。",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "src/panner/execution_log.py"
+      ],
+      "tests_create": [
+        "tests/test_execution_log_concurrent.py — 2 个 agent 同时跑同一 hash 不撞"
+      ],
+      "dependencies": ["P1.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_execution_log.py tests/test_execution_log_concurrent.py"
+      ],
+      "exit_gate": [
+        "~/.panner/execution_log.db 文件存在且 schema 与 P1.1 一致",
+        "并发 2 agent 下 atomic 写不撞"
+      ],
+      "notes": "P2.1 复用 P1.1 schema, 不重命名。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P2.2",
+      "phase": 2,
+      "title": "result_storage parquet 外存模块",
+      "description": "新建 src/panner/utils/result_storage.py — DataFrame > N 字符(默认 20K) → 写 ~/.panner/results/<execution_id>_<query_id>.parquet atomic 写; LLM context 中此 result 替换为 schema + 5 行 preview + path; agent 跨 turn 引用 read_result(execution_id, query_id) 重新加载。",
+      "status": "pending",
+      "files_create": [
+        "src/panner/utils/result_storage.py"
+      ],
+      "files_modify": [],
+      "tests_create": [
+        "tests/test_result_storage.py — 50K / 500K / 5M row dataframe 写盘不爆 context"
+      ],
+      "dependencies": ["P2.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_result_storage.py"
+      ],
+      "exit_gate": [
+        "5M row write 不爆 context, schema + preview + path 三件齐",
+        "read_result API 跨 turn 复用 parquet"
+      ],
+      "notes": "DEFAULT_LRU 7 天(开放问题 #10); API agent.pin_result(\"hash\") 可手动标不可清。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P2.3",
+      "phase": 2,
+      "title": "truncate_content 改造 (deprecated → result_storage)",
+      "description": "修改 src/panner/utils.py 的 truncate_content — 路径分两类: 小结果照旧 truncate; 大结果改走 result_storage.parquet 路径, 主路径负责, truncate 只做底线防御。",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "src/panner/utils.py"
+      ],
+      "tests_create": [
+        "tests/test_truncate_migration.py — 小结果仍 truncate, 大结果走 parquet"
+      ],
+      "dependencies": ["P2.2"],
+      "verification": [
+        "make quality",
+        "make test tests/test_truncate_migration.py"
+      ],
+      "exit_gate": [
+        "小结果路径不变, 大结果走 result_storage"
+      ],
+      "notes": "truncate_content 旧 20K bug 缓解, 见 DIRECTIONS.md §⚠️ #6。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P3.1",
+      "phase": 3,
+      "title": "DuckDB schema_cache 跨 turn",
+      "description": "新建 src/panner/tools/schema_memory.py — load_schema() 首次问起: 跑 SELECT * FROM duckdb_tables() JOIN duckdb_columns() USING (table_name) 走入 execution_log; 缓存到 self.state[\"schema_cache\"] 带 schema_hash(列名 + 类型 hash)。",
+      "status": "pending",
+      "files_create": [
+        "src/panner/tools/schema_memory.py"
+      ],
+      "files_modify": [],
+      "tests_create": [
+        "tests/test_schema_memory.py — 多轮探索中 schema 加入 1 次, 后续不重拉"
+      ],
+      "dependencies": ["P2.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_schema_memory.py"
+      ],
+      "exit_gate": [
+        "10 turn 同会话只拉 1 次 schema (除非 drift)"
+      ],
+      "notes": "schema_hash 算法只名 + 类型, 轻, 不包括 NOT NULL / INDEX(开放问题 #11)。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P3.2",
+      "phase": 3,
+      "title": "Schema drift 检测",
+      "description": "每个 turn 起手 compute duckdb_tables() 现有 hash, 与 cache 比对 — 不匹配则重拉 + 标 schema_drifted_at; 不存盘, session 结束即焚。",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "src/panner/tools/schema_memory.py"
+      ],
+      "tests_create": [
+        "tests/test_schema_drift.py — turn 中 CREATE TABLE, 下一 turn schema_cache 必失效重拉"
+      ],
+      "dependencies": ["P3.1"],
+      "verification": [
+        "make quality",
+        "make test tests/test_schema_drift.py"
+      ],
+      "exit_gate": [
+        "drift 触发后下一 turn 重拉",
+        "session 结束 schema_cache 清空"
+      ],
+      "notes": "缓解 DIRECTIONS.md §⚠️ #3 (schema_cache drift)。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P4.1",
+      "phase": 4,
+      "title": "analytics_bench TASKS_DATA.csv (20 真 corpus)",
+      "description": "tests/eval/analytics_bench/TASKS_DATA.csv — 20 个真 corpus 任务, 每行 task_id / source_real_corpus(URL / 真数据集名)/ input_nl / ground_truth_sql / expected_refusal(false/true)。**真 corpus 不是自编样本**。",
+      "status": "pending",
+      "files_create": [
+        "tests/eval/analytics_bench/TASKS_DATA.csv"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P1.6"],
+      "verification": [
+        "20 行, 每行 source_real_corpus 字段非空 (URL 或 真数据集名)",
+        "csv 解析无报错"
+      ],
+      "exit_gate": [
+        "20 条真 corpus (不是凭空造题), 每条标注来源",
+        "ground_truth_sql 为真 SQL (不是占位)"
+      ],
+      "notes": "20 条 ~50 条 (DIRECTIONS.md) 已经够, 真 corpus 标准即上限。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P4.2",
+      "phase": 4,
+      "title": "run_eval.py + 三类联合度量",
+      "description": "tests/eval/analytics_bench/run_eval.py — 联合产出三类 metric: (a) numeric_accuracy: ground truth SQL vs agent SQL 算的数字 (±0.01 浮点误差); (b) citation_attachment: 答案中每个数字是否有 source_query_id 对应 (经 CitationChecker 确认); (c) refusal_rate: expected_refusal=true 的 case 拒答率。三件趋势线 + 失败 case 归因(意图/SQL/工具/推理 哪一坏)。",
+      "status": "pending",
+      "files_create": [
+        "tests/eval/analytics_bench/run_eval.py"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P4.1", "P1.5", "P1.6"],
+      "verification": [
+        "make eval-mock (mock LLM 路径, <5 min)",
+        "输出三类 metric + 失败 case 归因"
+      ],
+      "exit_gate": [
+        "三类 metric 数字稳定可复现",
+        "失败 case 归因到意图/SQL/工具/推理 4 类"
+      ],
+      "notes": "三类联合度量防 lazy 拒答 — 单条下降不告警, 联合模式告警。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P4.3",
+      "phase": 4,
+      "title": "fuzz_citation.py 3 个对抗 case",
+      "description": "tests/eval/analytics_bench/fuzz_citation.py — 3 个对抗 case: agent 跑完 SQL 后强制写「胜行补 blah-blah」的 hallucinated total, CitationChecker 必拒 + execution_log 留痕。",
+      "status": "pending",
+      "files_create": [
+        "tests/eval/analytics_bench/fuzz_citation.py"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P1.6"],
+      "verification": [
+        "make eval-mock (含 fuzz)",
+        "3 case 100% 拦"
+      ],
+      "exit_gate": [
+        "3 case 100% blocked, denial trace 落到 execution_log"
+      ],
+      "notes": "D3 双轨 — adversarial 不分 mock / 真 LLM, framework 拦截本身一致。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P4.4",
+      "phase": 4,
+      "title": "curve_diff.py mock vs 真 LLM 双轨跟踪",
+      "description": "tests/eval/analytics_bench/curve_diff.py — mock_run.json vs real_run_nightly.json 两条曲线 diff, 长期看 invariant / regression 报告。",
+      "status": "pending",
+      "files_create": [
+        "tests/eval/analytics_bench/curve_diff.py"
+      ],
+      "files_modify": [],
+      "tests_create": [],
+      "dependencies": ["P4.2"],
+      "verification": [
+        "mock_run.json 与 real_run_nightly.json diff 报告生成",
+        "两线 invariant vs regression 标记"
+      ],
+      "exit_gate": [
+        "diff 算法稳定, 长期跟踪可迭代"
+      ],
+      "notes": "D3 双轨制落地物 — metric 不混, 但曲线 diff 长期可见。",
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "P4.5",
+      "phase": 4,
+      "title": "Makefile eval-mock / eval-real 接入",
+      "description": "Makefile 加 eval-mock(target = PR 触发, <5 min, run tests/eval/analytics_bench/run_eval.py --mock) + eval-real(target = nightly cron, ~1h, env var RIG_ANTHROPIC_API_KEY / RIG_OPENAI_API_KEY)。",
+      "status": "pending",
+      "files_create": [],
+      "files_modify": [
+        "Makefile"
+      ],
+      "tests_create": [],
+      "dependencies": ["P4.2"],
+      "verification": [
+        "make eval-mock 在 PR 时间预算内完成",
+        "make eval-real env var 缺时报清晰错误"
+      ],
+      "exit_gate": [
+        "PR 触发 / nightly cron 分轨清晰, 互不干扰"
+      ],
+      "notes": "无需 GitHub Actions 配置, 仅 Makefile。CI YAML 留给 Phase 5 (单独 PR)。",
+      "started_at": null,
+      "completed_at": null
+    }
+  ]
+}
